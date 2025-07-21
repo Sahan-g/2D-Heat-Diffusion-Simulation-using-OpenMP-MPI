@@ -24,6 +24,7 @@ int main() {
 
     double (*u)[GRID_WIDTH] = malloc(sizeof(double[GRID_HEIGHT][GRID_WIDTH]));
     double (*next_u)[GRID_WIDTH] = malloc(sizeof(double[GRID_HEIGHT][GRID_WIDTH]));
+    omp_set_num_threads(12);
 
     initialize_grid(u);
     memcpy(next_u, u, sizeof(double[GRID_HEIGHT][GRID_WIDTH]));

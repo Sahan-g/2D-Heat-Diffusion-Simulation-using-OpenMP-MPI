@@ -19,18 +19,18 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // 1) Domain decomposition
+
     int base_rows  = GRID_HEIGHT / size;
     int remainder  = GRID_HEIGHT % size;
     int local_rows = base_rows + (rank < remainder ? 1 : 0);
     int start_row  = rank * base_rows + (rank < remainder ? rank : remainder);
 
-    // 2) Allocate local chunk + 2 ghost rows
+    //  allocate local chunk + 2 ghost rows
     double (*u)[GRID_WIDTH]      = malloc((local_rows+2)*GRID_WIDTH*sizeof(double));
     double (*next_u)[GRID_WIDTH] = malloc((local_rows+2)*GRID_WIDTH*sizeof(double));
     if (!u || !next_u) MPI_Abort(MPI_COMM_WORLD, 1);
 
-    // 3) Initialize
+    //  initialize
     for (int i = 0; i < local_rows+2; i++)
         for (int j = 0; j < GRID_WIDTH; j++)
             u[i][j] = 0.0;
@@ -43,14 +43,14 @@ int main(int argc, char **argv) {
     }
     memcpy(next_u, u, (local_rows+2)*GRID_WIDTH*sizeof(double));
 
-    // 4) MPI row type for ghost exchange
+    // define rowtype to send ghost row
     MPI_Datatype row_t;
     MPI_Type_contiguous(GRID_WIDTH, MPI_DOUBLE, &row_t);
     MPI_Type_commit(&row_t);
 
     double t0 = MPI_Wtime();
 
-    // 5) Time‐stepping
+    // time‐stepping
     for (int step = 1; step <= NUM_STEPS; step++) {
         int up   = (rank == 0        ? MPI_PROC_NULL : rank-1);
         int down = (rank == size-1   ? MPI_PROC_NULL : rank+1);
@@ -82,15 +82,14 @@ int main(int argc, char **argv) {
         printf("MPI simulation (%d ranks) complete in %.6f s\n",
                size, t1 - t0);
     }
-
-    // 6) Prepare for gathering final grid
+    // memory allocation for fianal grid
     int *counts = NULL, *displs = NULL;
     if (rank == 0) {
         counts = malloc(size * sizeof(int));
         displs = malloc(size * sizeof(int));
     }
-    int my_count = local_rows * GRID_WIDTH;
-    MPI_Gather(&my_count, 1, MPI_INT,
+    int count_ = local_rows * GRID_WIDTH;
+    MPI_Gather(&count_, 1, MPI_INT,
                counts,  1, MPI_INT,
                0, MPI_COMM_WORLD);
     if (rank == 0) {
@@ -99,24 +98,23 @@ int main(int argc, char **argv) {
             displs[r] = displs[r-1] + counts[r-1];
     }
 
-    // 7) Flatten local data (skip ghost rows)
-    double *my_flat = malloc(my_count * sizeof(double));
+    //  Flatten local data (sikp ghost rows)
+    double *flat = malloc(count_ * sizeof(double));
     for (int i = 0; i < local_rows; i++) {
-        memcpy(my_flat + i*GRID_WIDTH,
+        memcpy(flat + i*GRID_WIDTH,
                u[i+1],
                GRID_WIDTH * sizeof(double));
     }
 
-    // 8) Gather into rank 0
+    // gather final grid to rank 0
     double *flat_final = NULL;
     if (rank == 0)
         flat_final = malloc(GRID_HEIGHT * GRID_WIDTH * sizeof(double));
 
-    MPI_Gatherv(my_flat, my_count, MPI_DOUBLE,
+    MPI_Gatherv(flat, count_, MPI_DOUBLE,
                 flat_final, counts, displs, MPI_DOUBLE,
                 0, MPI_COMM_WORLD);
 
-    // 9) On rank 0, write to text file
     if (rank == 0) {
         FILE *fp = fopen("mpi.txt", "w");
         if (!fp) { perror("fopen"); MPI_Abort(MPI_COMM_WORLD,1); }
@@ -132,8 +130,7 @@ int main(int argc, char **argv) {
         free(displs);
     }
 
-    // cleanup
-    free(my_flat);
+    free(flat);
     free(u);
     free(next_u);
     MPI_Type_free(&row_t);

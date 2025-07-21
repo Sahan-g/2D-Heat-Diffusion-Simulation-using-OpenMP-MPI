@@ -57,7 +57,7 @@ int main() {
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
     elapsed_time = (end_time.tv_sec - start_time.tv_sec);
-    elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1.0e9; // 1.0e9 is 1 billion
+    elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1.0e9; 
 
     printf("\n--- Simulation Complete ---\n");
     printf("Total execution time: %.6f seconds\n", elapsed_time);

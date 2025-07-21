@@ -11,8 +11,8 @@
 
 #define D    0.1   // diffusion coefficient
 #define DT   1.0   // time step
-#define DX   1.0   // Δx
-#define DY   1.0   // Δy
+#define DX   1.0   // dx
+#define DY   1.0   // dy
 
 int main(int argc, char **argv) {
     MPI_Init(&argc,&argv);
@@ -20,18 +20,20 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
     MPI_Comm_size(MPI_COMM_WORLD,&size);
 
-    // 1) Split GRID_HEIGHT rows among 'size' ranks
+    omp_set_num_threads(12);
+
+    // split grid
     int base   = GRID_HEIGHT / size;
     int rem    = GRID_HEIGHT % size;
     int local  = base + (rank < rem ? 1 : 0);
     int start  = rank*base + (rank < rem ? rank : rem);
 
-    // 2) Allocate local chunk + 2 ghost rows
+    // allocate local chunk + 2 ghost rows
     double (*u)[GRID_WIDTH]      = malloc((local+2)*GRID_WIDTH*sizeof(double));
     double (*next_u)[GRID_WIDTH] = malloc((local+2)*GRID_WIDTH*sizeof(double));
     if (!u || !next_u) MPI_Abort(MPI_COMM_WORLD,1);
 
-    // 3) Initialize: zeros, then hot line in the global mid‐row
+    // i nitialize grid 
     for (int i = 0; i < local+2; i++)
         for (int j = 0; j < GRID_WIDTH; j++)
             u[i][j] = 0.0;
@@ -43,19 +45,19 @@ int main(int argc, char **argv) {
     }
     memcpy(next_u, u, (local+2)*GRID_WIDTH*sizeof(double));
 
-    // 4) Build MPI row type for ghost‐row exchange
+    //  MPI row type for ghost‐row 
     MPI_Datatype row_t;
     MPI_Type_contiguous(GRID_WIDTH, MPI_DOUBLE, &row_t);
     MPI_Type_commit(&row_t);
 
-    // 5) Prepare for final gather: counts & displacements
+    //  Prepare for final gather: counts & displacements
     int *counts = NULL, *displs = NULL;
     if (rank==0) {
         counts = malloc(size*sizeof(int));
         displs = malloc(size*sizeof(int));
     }
-    int my_count = local*GRID_WIDTH;
-    MPI_Gather(&my_count,1,MPI_INT,
+    int count_ = local*GRID_WIDTH;
+    MPI_Gather(&count_,1,MPI_INT,
                counts,1,MPI_INT,
                0,MPI_COMM_WORLD);
     if (rank==0) {
@@ -64,10 +66,10 @@ int main(int argc, char **argv) {
             displs[r] = displs[r-1] + counts[r-1];
     }
 
-    // 6) Time‐stepping loop
+    //  time‐stepping loop
     double t0 = MPI_Wtime();
     for (int step=1; step<=NUM_STEPS; step++) {
-        // a) Exchange ghost rows
+        //  exchange rows
         int up   = (rank==0        ? MPI_PROC_NULL : rank-1);
         int down = (rank==size-1   ? MPI_PROC_NULL : rank+1);
         MPI_Sendrecv(u[1],     1, row_t, up,   0,
@@ -77,12 +79,12 @@ int main(int argc, char **argv) {
                      u[local+1],1,row_t, down,0,
                      MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        // b) Determine interior rows to update (Dirichlet top/bottom)
+       
         int i0 = 1, i1 = local;
-        if (start == 0)               i0 = 2;         // skip global top
-        if (start+local == GRID_HEIGHT) i1 = local-1; // skip global bottom
+        if (start == 0)               i0 = 2;       
+        if (start+local == GRID_HEIGHT) i1 = local-1; 
 
-        // c) OpenMP‐parallel stencil
+        //  OpenMP
         #pragma omp parallel
         {
             #pragma omp for collapse(2) schedule(static)
@@ -100,11 +102,10 @@ int main(int argc, char **argv) {
     }
     double t1 = MPI_Wtime();
 
-    // 7) Gather final grid back to rank 0
-    //    First flatten local real rows (skip ghost at 0 and local+1)
-    double *my_flat = malloc(local*GRID_WIDTH*sizeof(double));
+    // gather final grid back to rank 0
+    double *flat = malloc(local*GRID_WIDTH*sizeof(double));
     for (int i=0; i<local; i++) {
-        memcpy(my_flat + i*GRID_WIDTH,
+        memcpy(flat + i*GRID_WIDTH,
                u[i+1],
                GRID_WIDTH*sizeof(double));
     }
@@ -112,11 +113,11 @@ int main(int argc, char **argv) {
     if (rank==0)
         flat_final = malloc(GRID_HEIGHT*GRID_WIDTH*sizeof(double));
 
-    MPI_Gatherv(my_flat, my_count, MPI_DOUBLE,
+    MPI_Gatherv(flat, count_, MPI_DOUBLE,
                 flat_final, counts, displs, MPI_DOUBLE,
                 0, MPI_COMM_WORLD);
 
-    // 8) On rank 0, write the entire grid to "heat_output.txt"
+
     if (rank==0) {
 
         printf("Hybrid MPI+OpenMP (%d ranks × %d threads) → %.3f s\n",
@@ -132,11 +133,10 @@ int main(int argc, char **argv) {
         fclose(fp);
     }
 
-    // 9) Cleanup
     MPI_Type_free(&row_t);
     free(u);
     free(next_u);
-    free(my_flat);
+    free(flat);
     free(counts);
     free(displs);
     free(flat_final);
