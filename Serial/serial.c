@@ -6,7 +6,7 @@
 // ---Parameters ---
 #define GRID_HEIGHT 1500
 #define GRID_WIDTH  1500
-#define NUM_STEPS   500
+#define NUM_STEPS   2000
 
 #define D    0.1 // Diffusion coefficient
 #define DT   1.0 // Time step size
@@ -57,11 +57,24 @@ int main() {
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
     elapsed_time = (end_time.tv_sec - start_time.tv_sec);
-    elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1.0e9; // 1.0e9 is 1 billion
+    elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1.0e9; 
 
     printf("\n--- Simulation Complete ---\n");
     printf("Total execution time: %.6f seconds\n", elapsed_time);
     //print_grid(u);
+
+    FILE *fp = fopen("serial.txt", "w");
+    if (!fp) {
+        perror("fopen");
+        return 1;
+    }
+    for (int i = 0; i < GRID_HEIGHT; i++) {
+        for (int j = 0; j < GRID_WIDTH; j++) {
+            fprintf(fp, "%8.8f ", u[i][j]);
+        }
+        fprintf(fp, "\n");
+    }
+    fclose(fp);
 
     free(u);
     free(next_u);

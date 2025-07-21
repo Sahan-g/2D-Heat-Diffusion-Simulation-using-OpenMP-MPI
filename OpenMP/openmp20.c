@@ -29,7 +29,7 @@ void initialize_grid(double u[GRID_HEIGHT][GRID_WIDTH]) {
 void print_grid(double u[GRID_HEIGHT][GRID_WIDTH]) {
     for (int i = 0; i < GRID_HEIGHT; i++) {
         for (int j = 0; j < GRID_WIDTH; j++) {
-            printf("%6.1f ", u[i][j]);
+            printf("%6.6f ", u[i][j]);
         }
         printf("\n");
     }
@@ -58,7 +58,7 @@ int main() {
                 next_u[i][j] = c + DT * D * lap;
             }
         }
-        // implicit barrier here before memcpy
+        #pragma omp single
         memcpy(u, next_u, sizeof(u));
     }
 
