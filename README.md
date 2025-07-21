@@ -57,6 +57,25 @@ mpirun -np 4 ./mpi
 export OMP_NUM_THREADS=4
 mpirun -np 2 ./hybrid
 ```
+### Output
+
+Each version writes the final temperature field to:
+
+serial.txt
+
+openmp.txt
+
+mpi.txt
+
+hybrid.txt
+
+Files contain floating-point values in row-major order with 8 decimal places.
+
+## Accuracy Verification
+
+```bash
+python3 error.py
+```
 
 
 
